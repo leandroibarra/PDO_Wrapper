@@ -32,7 +32,7 @@ class PDO_Wrapper {
 	 *
 	 * @var string
 	 */
-	public static $LOG_ERRORS_DIRECTORY = LOG_DIR;
+	public static $LOG_ERRORS_DIRECTORY = '';
 
 	/**
 	 * File where will be written the errors.
