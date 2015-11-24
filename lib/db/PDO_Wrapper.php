@@ -60,7 +60,7 @@ class PDO_Wrapper {
 	 *
 	 * @var Exception|PDOException - stores all the exceptions
 	 */
-	protected $pdo_exception;
+	protected $last_exception;
 
 	/**
 	 * PDO_Wrapper single instance (singleton).
@@ -106,7 +106,7 @@ class PDO_Wrapper {
 				throw new Exception('Warning, configuration attempt after that connection exists.');
 		} catch (Exception $e) {
 			$this->writeError($e);
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		}
 
 		$this->config_params = array(
@@ -136,7 +136,7 @@ class PDO_Wrapper {
 				throw new Exception('Error, the database you wish to connect to is not supported by your install of PHP.');
 		} catch (Exception $e) {
 			$this->writeError($e);
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		}
 
 		// Attempt create PDO object and connect to the database
@@ -173,10 +173,10 @@ class PDO_Wrapper {
 			return $oPdo;
 		} catch (PDOException $e) {
 			$this->writeError($e);
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		} catch (Exception $e) {
 			$this->writeError($e);
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		}
 	}
 
@@ -345,10 +345,10 @@ class PDO_Wrapper {
 			return (!is_null($piLimit) && is_numeric($piLimit) && $piLimit==1) ? $oPdoStmt->fetch(PDO::FETCH_ASSOC) : $oPdoStmt->fetchAll(PDO::FETCH_ASSOC);
 		} catch (PDOException $e) {
 			$this->writeError($e);
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		} catch (Exception $e) {
 			$this->writeError($e);
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		}
 	}
 
@@ -400,10 +400,10 @@ class PDO_Wrapper {
 			return $oPdo->lastInsertId();
 		} catch (PDOException $e) {
 			$this->writeError($e);
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		} catch (Exception $e) {
 			$this->writeError($e);
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		}
 	}
 
@@ -468,11 +468,11 @@ class PDO_Wrapper {
 		} catch (PDOException $e) {
 			$this->writeError($e);
 			$this->cancelTransaction();
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		} catch (Exception $e) {
 			$this->writeError($e);
 			$this->cancelTransaction();
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		}
 	}
 
@@ -539,10 +539,10 @@ class PDO_Wrapper {
 			return $oPdoStmt->rowCount();
 		} catch (PDOException $e) {
 			$this->writeError($e);
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		} catch (Exception $e) {
 			$this->writeError($e);
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		}
 	}
 
@@ -571,11 +571,11 @@ class PDO_Wrapper {
 		} catch (PDOException $e) {
 			$this->writeError($e);
 			$this->cancelTransaction();
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		} catch (Exception $e) {
 			$this->writeError($e);
 			$this->cancelTransaction();
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		}
 	}
 
@@ -625,10 +625,10 @@ class PDO_Wrapper {
 			return $oPdoStmt->rowCount();
 		} catch (PDOException $e) {
 			$this->writeError($e);
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		} catch (Exception $e) {
 			$this->writeError($e);
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		}
 	}
 
@@ -660,10 +660,10 @@ class PDO_Wrapper {
 			return ($biFirst) ? $oPdoStmt->fetch(PDO::FETCH_ASSOC) : $oPdoStmt->fetchAll(PDO::FETCH_ASSOC);
 		} catch (PDOException $e) {
 			$this->writeError($e);
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		} catch (Exception $e) {
 			$this->writeError($e);
-			throw new PDO_Wrapper_Exception($this->pdo_exception, null, $e);
+			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
 		}
 	}
 
@@ -753,7 +753,7 @@ class PDO_Wrapper {
 	}
 
 	/**
-	 * Write error log into file and set pdo_exception class property.
+	 * Write error log into file and set last_exception class property.
 	 *
 	 * @param Exception $poError
 	 */
@@ -769,7 +769,7 @@ class PDO_Wrapper {
 			echo $sMessage;
 		}
 
-		$this->pdo_exception = $poError;
+		$this->last_exception = $poError;
 	}
 
 	/**
@@ -778,7 +778,7 @@ class PDO_Wrapper {
 	 * @return string
 	 */
 	public function getErrorMessage() {
-		return ($this->pdo_exception) ? $this->pdo_exception->getMessage() : 'Database temporarily unavailable';
+		return ($this->last_exception) ? $this->last_exception->getMessage() : 'Database temporarily unavailable';
 	}
 
 	/**
@@ -786,8 +786,8 @@ class PDO_Wrapper {
 	 *
 	 * @return Exception|PDOException
 	 */
-	public function getPDOException() {
-		return $this->pdo_exception;
+	public function getLastException() {
+		return $this->last_exception;
 	}
 
 	/**
