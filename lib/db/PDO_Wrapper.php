@@ -682,10 +682,10 @@ class PDO_Wrapper {
 	 * Obtains fields from table or values from intersection of table fields and filter array.
 	 *
 	 * @param string $psTable - table name
-	 * @param array $aParams (optional) - associative array representing the columns and their respective values (statements: select, insert or update)
+	 * @param array $paParams (optional) - associative array representing the columns and their respective values (statements: select, insert or update)
 	 * @return array fields|values
 	 */
-	protected function filter($psTable, $aParams=null) {
+	protected function filter($psTable, $paParams=null) {
 		$oPdo = $this->getConnection();
 		$sDriver = $oPdo->getAttribute(PDO::ATTR_DRIVER_NAME);
 
@@ -706,11 +706,13 @@ class PDO_Wrapper {
 			foreach ($aFieldsTable as $record)
 				$aFields[] = $record[$sKey];
 
-			if (count($aParams) > 0)
-				$aValues = array_values(array_intersect($aFields, array_keys($aParams)));
+			if (count($paParams) > 0) {
+				$aFilterIntersect = (array_is_assoc($paParams)) ? array_keys($paParams) : array_values($paParams);
+				$aValues = array_values(array_intersect($aFields, $aFilterIntersect));
+			}
 		}
 
-		return (count($aParams) > 0) ? $aValues : $aFields;
+		return (count($paParams) > 0) ? $aValues : $aFields;
 	}
 
 	/**
