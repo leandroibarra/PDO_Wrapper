@@ -369,19 +369,19 @@ class PDO_Wrapper {
 	 * Add only a new record to a specified table.
 	 *
 	 * @param string $psTable - table name
-	 * @param array $psData - associative array representing the columns and their respective values
+	 * @param array $paData - associative array representing the columns and their respective values
 	 * @return integer|boolean - new ID (primary key) of the new record inserted, false on failure
 	 */
-	public function insert($psTable, $psData) {
-		// Build SELECT INTO statement
+	public function insert($psTable, $paData) {
+		// Build INSERT INTO statement
 		$sSql = "INSERT INTO $psTable";
 
 		// Obtains fields to be updated
-		$aFields = $this->filter($psTable, $psData);
+		$aFieldsData = $this->filter($psTable, $paData);
 
 		// Append fields and values into the query string
-		$sSql .= ' (`' . implode('`, `', $aFields) . '`)';
-		$sSql .= ' VALUES (:' . implode(', :', $aFields) . ')';
+		$sSql .= ' (`' . implode('`, `', $aFieldsData) . '`)';
+		$sSql .= ' VALUES (:' . implode(', :', $aFieldsData) . ')';
 
 		// Attempt bind query parameters and execute query
 		try {
@@ -389,9 +389,10 @@ class PDO_Wrapper {
 
 			$oPdoStmt = $oPdo->prepare($sSql);
 
-			// Bind values to parameters from array $psData
-			foreach ($psData as $key=>$val) {
-				$oPdoStmt->bindValue(':'.$key, $val);
+			// Bind values to parameters from array $paData
+			foreach ($paData as $key=>$val) {
+				if (in_array($key, $aFieldsData))
+					$oPdoStmt->bindValue(':'.$key, $val);
 			}
 
 			$oPdoStmt->execute();
@@ -411,60 +412,24 @@ class PDO_Wrapper {
 	 * Adds multiple records to a specified table.
 	 *
 	 * @param string $psTable - table name
-	 * @param array $psData - associative array representing the columns and their respective values
+	 * @param array $paData - associative array representing the columns and their respective values
 	 * @return integer|boolean - number of rows affected, false on failure
 	 */
-	public function insertMultiple($psTable, $psData) {
-		// Build SELECT INTO statement
-		$sSql = "INSERT INTO $psTable";
-
-		// Obtains fields to be updated
-		$aFields = $this->filter($psTable, $psData[0]);
-
-		// Append fields into the query string
-		$sSql .= ' (`' . implode('`, `', $aFields) . '`) VALUES ';
-
-		// Append each VALUES expressions from $paData array
-		foreach ($psData as $row_index=>$row_values) {
-			// Only append comma after that the first row has been added
-			if ($row_index > 0)
-				$sSql .= ', ';
-
-			$sSql .= '(';
-			$bAddComma = false;
-
-			// Append the row values for each record
-			foreach ($row_values as $value_index=>$value) {
-				($bAddComma) ? $sSql.=', ' : $bAddComma=true;
-
-				// Add the bind field name based on the row and column index
-				$sSql .= ':'.$row_index.'_'.$value_index;
-			}
-
-			$sSql .= ')';
-		}
-
+	public function insertMultiple($psTable, $paData) {
 		// Attempt bind query parameters and execute query using a transaction
 		try {
+			$iNumRows = 0;
+
 			$this->beginTransaction();
 
-			$oPdo = $this->getConnection();
+			// Execute each insert statement
+			foreach ($paData as $key=>$aData)
+				$iNumRows += $this->insert($psTable, $aData);
 
-			$oPdoStmt = $oPdo->prepare($sSql);
-
-			// Bind values to parameters from array $psData
-			foreach ($psData as $row_index=>$row_values) {
-				foreach ($row_values as $value_index=>$value) {
-					$oPdoStmt->bindValue(':'.$row_index.'_'.$value_index, $value);
-				}
-			}
-
-			// Execute statement and commit transaction
-			$oPdoStmt->execute();
 			$this->endTransaction();
 
 			// Returns number of rows affected
-			return $oPdoStmt->rowCount();
+			return $iNumRows;
 		} catch (PDOException $e) {
 			$this->writeError($e);
 			$this->cancelTransaction();
@@ -480,19 +445,19 @@ class PDO_Wrapper {
 	 * Update existing record in specified table.
 	 *
 	 * @param string $psTable - table name
-	 * @param array $psData - associative array representing the columns and their respective values to update
+	 * @param array $paData - associative array representing the columns and their respective values to update
 	 * @param array $paWhere (optional) - associative array representing the WHERE clause filters
 	 * @return integer|boolean - number of rows updated, false on failure
 	 */
-	public function update($psTable, $psData, $paWhere=null) {
+	public function update($psTable, $paData, $paWhere=null) {
 		// Build UPDATE statement
 		$sSql = "UPDATE $psTable SET ";
 
 		// Obtains fields to be updated
-		$aFields = $this->filter($psTable, $psData);
+		$aFieldsData = $this->filter($psTable, $paData);
 
 		// Append set part into the query string
-		foreach ($aFields as $key=>$val) {
+		foreach ($aFieldsData as $key=>$val) {
 			if ($key > 0)
 				$sSql .= ', ';
 
@@ -504,10 +469,10 @@ class PDO_Wrapper {
 			$sSql .= ' WHERE ';
 
 			// Obtains fields to WHERE clause
-			$aFields = $this->filter($psTable, $paWhere);
+			$aFieldsWhere = $this->filter($psTable, $paWhere);
 
 			// Add each condition
-			foreach ($aFields as $key=>$val) {
+			foreach ($aFieldsWhere as $key=>$val) {
 				if ($key > 0)
 					$sSql .= ' AND ';
 
@@ -521,15 +486,17 @@ class PDO_Wrapper {
 
 			$oPdoStmt = $oPdo->prepare($sSql);
 
-			// Bind values to parameters from array $psData
-			foreach ($psData as $key=>$val) {
-				$oPdoStmt->bindValue(':param_'.$key, $val);
+			// Bind values to parameters from array $paData
+			foreach ($paData as $key=>$val) {
+				if (in_array($key, $aFieldsData))
+					$oPdoStmt->bindValue(':param_'.$key, $val);
 			}
 
 			if (count($paWhere) > 0) {
 				// Bind values to parameters from array $paWhere
 				foreach ($paWhere as $key=>$val) {
-					$oPdoStmt->bindValue(':where_'.$key, $val);
+					if (in_array($key, $aFieldsWhere))
+						$oPdoStmt->bindValue(':where_'.$key, $val);
 				}
 			}
 
@@ -550,18 +517,18 @@ class PDO_Wrapper {
 	 * Update multiple records to a specified table.
 	 *
 	 * @param string $psTable - table name
-	 * @param array $psData - associative array representing the columns and their respective values to update
+	 * @param array $paData - associative array representing the columns and their respective values to update
 	 * @param array $paWhere - associative array representing the WHERE clause filters
 	 * @return integer|boolean - number of rows updated, false on failure
 	 */
-	public function updateMultiple($psTable, $psData, $paWhere) {
+	public function updateMultiple($psTable, $paData, $paWhere) {
 		try {
 			$iNumRows = 0;
 
 			$this->beginTransaction();
 
 			// Execute each UPDATE statement
-			foreach ($psData as $key=>$aData)
+			foreach ($paData as $key=>$aData)
 				$iNumRows += $this->update($psTable, $aData, $paWhere[$key]);
 
 			$this->endTransaction();
@@ -595,10 +562,10 @@ class PDO_Wrapper {
 			$sSql .= ' WHERE ';
 
 			// Obtains fields to WHERE clause
-			$aFields = $this->filter($psTable, $paWhere);
+			$aFieldsWhere = $this->filter($psTable, $paWhere);
 
 			// Add each condition
-			foreach ($aFields as $key=>$val) {
+			foreach ($aFieldsWhere as $key=>$val) {
 				if ($key > 0)
 					$sSql .= ' AND ';
 
@@ -615,7 +582,8 @@ class PDO_Wrapper {
 			if (count($paWhere) > 0) {
 				// Bind values to parameters from array $paWhere
 				foreach ($paWhere as $key=>$val) {
-					$oPdoStmt->bindValue(':'.$key, $val);
+					if (in_array($key, $aFieldsWhere))
+						$oPdoStmt->bindValue(':'.$key, $val);
 				}
 			}
 
@@ -636,20 +604,20 @@ class PDO_Wrapper {
 	 * Returns data from a customized SELECT statement.
 	 *
 	 * @param string $psQuery - SELECT statement to be executed
-	 * @param array $psParams (optional) - associative array with bind parameters (representing the WHERE clause filters)
-	 * @param boolean $biFirst (optional) - indicates if returns only first row
+	 * @param array $paParams (optional) - associative array with bind parameters (representing the WHERE clause filters)
+	 * @param boolean $pbFirst (optional) - indicates if returns only first row
 	 * @return array|boolean - associate array representing the fetched table(s) row(s), false on failure
 	 */
-	public function query($psQuery, $psParams=null, $biFirst=false) {
+	public function query($psQuery, $paParams=null, $pbFirst=false) {
 		// Attempt bind query parameters and execute query
 		try {
 			$oPdo = $this->getConnection();
 
 			$oPdoStmt = $oPdo->prepare($psQuery);
 
-			if (count($psParams) > 0) {		
+			if (count($paParams) > 0) {
 				// Bind values to parameters from array $paParams
-				foreach ((array)$psParams as $key=>$val) {
+				foreach ((array)$paParams as $key=>$val) {
 					$oPdoStmt->bindValue(':'.$key, $val);
 				}
 			}
@@ -657,7 +625,7 @@ class PDO_Wrapper {
 			$oPdoStmt->execute();
 
 			// Returns the results (first row only or all rows)
-			return ($biFirst) ? $oPdoStmt->fetch(PDO::FETCH_ASSOC) : $oPdoStmt->fetchAll(PDO::FETCH_ASSOC);
+			return ($pbFirst) ? $oPdoStmt->fetch(PDO::FETCH_ASSOC) : $oPdoStmt->fetchAll(PDO::FETCH_ASSOC);
 		} catch (PDOException $e) {
 			$this->writeError($e);
 			throw new PDO_Wrapper_Exception($this->getErrorMessage(), null, $e);
@@ -671,11 +639,11 @@ class PDO_Wrapper {
 	 * Returns first record from a customized SELECT statement.
 	 *
 	 * @param string $psQuery - SELECT statement to be executed
-	 * @param array $psParams (optional) - associative array with bind parameters (representing the WHERE clause filters)
+	 * @param array $paParams (optional) - associative array with bind parameters (representing the WHERE clause filters)
 	 * @return array|boolean - associate array representing the fetched table row, false on failure
 	 */
-	public function queryFirst($psQuery, $psParams=array()) {
-		return $this->query($psQuery, $psParams, true);
+	public function queryFirst($psQuery, $paParams=array()) {
+		return $this->query($psQuery, $paParams, true);
 	}
 
 	/**

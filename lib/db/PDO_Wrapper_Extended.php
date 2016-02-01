@@ -56,8 +56,8 @@ class PDO_Wrapper_Extended extends PDO_Wrapper {
 	 * @param string $psQuery - SELECT statement to be executed
 	 * @param string $psTable - table name
 	 * @param array $paGet (reference - optional) - $_GET parameters to filter query
-	 * @param int $piCount (optional)
-	 * @param int $piOffset (optional)
+	 * @param integer $piCount (optional)
+	 * @param integer $piOffset (optional)
 	 * @return array|boolean - associate array representing the fetched table(s) row(s), false on failure
 	 */
 	public function rawSearch($psQuery, $psTable, &$paGet=null, $piCount='', $piOffset='') {
