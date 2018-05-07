@@ -163,8 +163,12 @@ class PDO_Wrapper {
 
 			$sConnection .= ";port=$psPort";
 
+			$aOptions = array(
+				PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8'
+			);
+
 			// Initialize PDO object that representing a connection to the database
-			$oPdo = new PDO($sConnection, $psUser, $psPass);
+			$oPdo = new PDO($sConnection, $psUser, $psPass, $aOptions);
 
 			// Set errors report and launch PDO exceptions
 			$oPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -273,7 +277,7 @@ class PDO_Wrapper {
 				if ($key > 0)
 					$sSql .= ' AND ';
 
-				$sSql .= "$val = :$val";
+				$sSql .= "`$val` = :$val";
 			}
 		}
 
@@ -476,7 +480,7 @@ class PDO_Wrapper {
 				if ($key > 0)
 					$sSql .= ' AND ';
 
-				$sSql .= "$val = :where_$val";
+				$sSql .= "`$val` = :where_$val";
 			}
 		}
 
@@ -569,7 +573,7 @@ class PDO_Wrapper {
 				if ($key > 0)
 					$sSql .= ' AND ';
 
-				$sSql .= "$val = :$val";
+				$sSql .= "`$val` = :$val";
 			}
 		}
 
@@ -617,8 +621,11 @@ class PDO_Wrapper {
 
 			if (count($paParams) > 0) {
 				// Bind values to parameters from array $paParams
-				foreach ((array)$paParams as $key=>$val) {
-					$oPdoStmt->bindValue(':'.$key, $val);
+				foreach ($paParams as $key=>$val) {
+					$sField = ':'.$key;
+
+					if (strpos($psQuery, $sField) !== false)
+						$oPdoStmt->bindValue($sField, $val);
 				}
 			}
 
@@ -644,6 +651,17 @@ class PDO_Wrapper {
 	 */
 	public function queryFirst($psQuery, $paParams=array()) {
 		return $this->query($psQuery, $paParams, true);
+	}
+
+	/**
+	 * Returns fields belonging to table.
+	 *
+	 * @param string $psTable - table name
+	 * @return array $aFields
+	 */
+	public function getTableFields($psTable) {
+		$aFields = $this->filter($psTable);
+		return $aFields;
 	}
 
 	/**

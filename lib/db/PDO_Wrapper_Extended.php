@@ -14,14 +14,40 @@ class PDO_Wrapper_Extended extends PDO_Wrapper {
 	 *
 	 * @var integer
 	 */
-	public $totalRecords;
+	private $iTotalRecords;
 
 	/**
 	 * Number of records, after filtering.
 	 *
 	 * @var integer
 	 */
-	public $totalDisplayRecords;
+	private $iTotalFilteredRecords;
+
+	/**
+	 * Parameters to store pages information.
+	 *
+	 * @var array
+	 */
+	public $aPages = array(
+		'iFirst' => 1,
+		'iPrev' => null,
+		'iSelf' => null,
+		'iNext' => null,
+		'iLast' => null
+	);
+
+	/**
+	 * Parameters to store information of query results.
+	 *
+	 * @var array
+	 */
+	public $aRecords = array(
+		'iFrom' => null,
+		'iTo' => null,
+		'iAmount' => null,
+		'iPerPage' => null,
+		'iTotal' => null
+	);
 
 	/**
 	 * PDO_Wrapper_Extended single instance (singleton).
@@ -43,11 +69,97 @@ class PDO_Wrapper_Extended extends PDO_Wrapper {
 	}
 
 	/**
+	 * Retrieve private property iTotalRecords.
+	 *
+	 * @return integer
+	 */
+	public function getTotalRecords() {
+		return $this->iTotalRecords;
+	}
+
+	/**
+	 * Retrieve private property iTotalFilteredRecords.
+	 *
+	 * @return integer
+	 */
+	public function getTotalFilteredRecords() {
+		return $this->iTotalFilteredRecords;
+	}
+
+	/**
 	 * Constructor. Make protected so only subclasses and self can create this object (singleton).
 	 *
 	 */
 	protected function __construct() {
 		parent::__construct();
+	}
+
+	/**
+	 * Sets and validates pages, builds LIMIT clause, and executes query.
+	 *
+	 * @param string $psTable
+	 * @param string $psTableAlias
+	 * @param string $psQuery
+	 * @param array $paFilters
+	 * @param integer $piPage
+	 * @param integer $piLimit
+	 * @return array $aResult
+	 */
+	public function executeQuery($psTable, $psTableAlias, $psQuery, $paFilters, $piPage, $piLimit) {
+		$sFieldsQuery = str_ireplace('SELECT', '', substr($psQuery, 0, strpos($psQuery, 'FROM')));
+
+		$sDistinctField = 'id';
+
+		if ($psTable == 'actions')
+			$sDistinctField = 'id_user';
+
+		$sTotalFilteredQuery = preg_replace(
+			'/(GROUP BY.*)$/',
+			'',
+			str_ireplace(
+				trim($sFieldsQuery),
+				" COUNT(DISTINCT({$psTableAlias}.{$sDistinctField})) AS total ",
+				$psQuery
+			)
+		);
+
+		$aTotalFiltered = $this->query($sTotalFilteredQuery, $paFilters);
+		$this->aRecords['iTotal'] = $this->iTotalFilteredRecords = $aTotalFiltered[0]['total'];
+
+		$this->aPages['iSelf'] = intval($piPage);
+
+		$iOffset = 0;
+		$iRowCount = $piLimit;
+
+		$this->aPages['iLast'] = ceil($this->iTotalFilteredRecords / $piLimit);
+
+		if ($this->iTotalFilteredRecords>0 && $piPage>$this->aPages['iLast'])
+			throw new Model_Exception(null, -0003);
+
+		if ($piPage>0 && $piPage<=$this->aPages['iLast']) {
+			$iOffset = ($piPage - 1) * $piLimit;
+
+			if ($piPage > 1)
+				$this->aPages['iPrev'] = $piPage - 1;
+
+			if ($piPage < $this->aPages['iLast'])
+				$this->aPages['iNext'] = $piPage + 1;
+		}
+
+		$this->aRecords['iPerPage'] = $iRowCount;
+
+		// For compatibility with PostgreSQL, MySQL also supports the LIMIT row_count OFFSET offset syntax
+		$psQuery .= " LIMIT {$iRowCount} OFFSET {$iOffset}";
+
+		$aResult = $this->query($psQuery, $paFilters);
+
+		$this->aRecords['iAmount'] = count($aResult);
+
+		$this->aRecords['iFrom'] = ($this->aRecords['iAmount']>0) ? (($piPage - 1) * $iRowCount) + 1 : $this->aRecords['iAmount'];
+
+		$this->aRecords['iTo'] = (($piPage - 1) * $iRowCount) + $this->aRecords['iAmount'];
+
+		return $aResult;
 	}
 
 	/**
@@ -85,8 +197,12 @@ class PDO_Wrapper_Extended extends PDO_Wrapper {
 
 		$sSql = $psQuery;
 
-		if ($aWhere)
-			$sSql .= (stripos($sSql, 'WHERE') ? ' AND ' : ' WHERE ') . $aWhere;
+		if ($aWhere) {
+			if (stripos($sSql, 'WHERE') !== false)
+				$sSql = str_replace('WHERE', "WHERE {$aWhere} AND ", $sSql);
+			else
+				$sSql .= " WHERE {$aWhere} ";
+		}
 
 		if (!empty($sOrder))
 			$sSql .= " ORDER BY {$sOrder} ";
@@ -101,17 +217,17 @@ class PDO_Wrapper_Extended extends PDO_Wrapper {
 			$paGet['page'] = $piOffset;
 			$paGet['ipp'] = $piCount;
 
-			$sSql .= $this->paginator($sSql, $psTable, $sFieldsQuery, $paGet);
+			$sSql .= $this->paginator($psQuery, $sSql, $psTable, $sFieldsQuery, $paGet);
 
 			$paGet['page'] = $iPge;
 			$paGet['ipp'] = $iIpp;
 		} else {
-			$sSql .= $this->paginator($sSql, $psTable, $sFieldsQuery, $paGet);
+			$sSql .= $this->paginator($psQuery, $sSql, $psTable, $sFieldsQuery, $paGet);
 		}
 
 		$sSql .= ";";
 
-		$aResult = $this->query($sSql);
+		$aResult = $this->query($sSql, $paGet);
 
 		return $aResult;
 	}
@@ -175,6 +291,7 @@ class PDO_Wrapper_Extended extends PDO_Wrapper {
 	protected function processOrder($psTable, $paFields, $paGet) {
 		$aOrderby = array();
 
+		/*
 		// Default ORDER BY conditions
 		if (isset($paGet['iSortCol_0'])) {
 			for ($i=0; $i<intval($paGet['iSortingCols']); $i++) {
@@ -182,12 +299,20 @@ class PDO_Wrapper_Extended extends PDO_Wrapper {
 					$aOrderby[] = " {$psTable}.`{$paFields[intval($paGet['iSortCol_'.$i])]}` ".strtoupper($paGet['sSortDir_'.$i]);
 			}
 		}
+		*/
 
 		// Custom ORDER BY conditions
 		foreach ($paGet as $k=>$v) {
 			if (stripos($k,'o_')!==false && $v) {
 				$f = substr($k,2);
-				$aOrderby[] = " {$psTable}.`{$f}` ".strtoupper($v)." ";
+
+				if (strpos($f, '.') !== false) {
+					$aElements = explode('.', $f);
+
+					$aOrderby[] = " `{$aElements[0]}`.`{$aElements[1]}` ".strtoupper($v)." ";
+				} else {
+					$aOrderby[] = " `{$f}` ".strtoupper($v)." ";
+				}
 			}
 		}
 
@@ -217,18 +342,31 @@ class PDO_Wrapper_Extended extends PDO_Wrapper {
 			foreach ($paFields as $f) {
 				$aWhere[] = " {$psTable}.`{$f}` LIKE '{$paGet['q']}%' ";
 			}
-		} else {
-			// Search in specified fields only
-			foreach ($paGet as $k=>$v) {
-				if (stripos($k,'q_')!==false && $v) {
-					$f = substr($k,2);
-					$aWhere[] = " {$psTable}.`{$f}` LIKE '{$v}%' ";
-				}
-			}
 		}
 
+		// Search in specified fields
 		foreach ($paGet as $k=>$v) {
+			// Contain string
+			if (stripos($k,'q_')!==false && $v) {
+				$f = substr($k,2);
+
+				if (strpos($f, '.') !== false) {
+					$aElements = explode('.', $f);
+
+					$aWhere[] = " `{$aElements[0]}`.`{$aElements[1]}` LIKE '%{$v}%' ";
+				} else {
+					$aWhere[] = " `{$f}` LIKE '%{$v}%' ";
+				}
+			}
+
+			// End string
 			if (stripos($k,'qe_')!==false && $v) {
+				$f = substr($k,3);
+				$aWhere[] = " `{$f}` LIKE '%{$v}' ";
+			}
+
+			// Begin string
+			if (stripos($k,'qb_')!==false && $v) {
 				$f = substr($k,3);
 				$aWhere[] = " `{$f}` LIKE '{$v}%' ";
 			}
@@ -240,24 +378,52 @@ class PDO_Wrapper_Extended extends PDO_Wrapper {
 	/**
 	 * Returns totals records (before filtering and after filtering) and LIMIT clause.
 	 *
+	 * @param string $psQuery - original query string
 	 * @param string $psSql - query string
 	 * @param string $psTable - table name
 	 * @param string $psFields - fields from query string
 	 * @param array $paGet - $_GET array parameters reference or empty array to filter query
 	 * @return string $sLimit - LIMIT clause
 	 */
-	private function paginator($psSql, $psTable, $psFields, $paGet) {
+	private function paginator($psQuery, $psSql, $psTable, $psFields, $paGet) {
 		$sLimit = "";
 
-		$sSqlCount = str_ireplace(trim($psFields), ' COUNT(*) AS total ', $psSql);
+		$sCountField = '*';
 
-		$aResultCount = $this->query($sSqlCount, $psFields);
-		$this->totalDisplayRecords = $aResultCount[0]['total'];
+		preg_match('/GROUP BY (.*)/', $psSql, $aMatches);
+		if ((bool) $aMatches)
+			$sCountField = "DISTINCT({$aMatches[1]})";
+
+		$sTotalFiltered = preg_replace(
+			'/(GROUP BY.*)$/m',
+			'',
+			str_ireplace(
+				trim($psFields),
+				" COUNT({$sCountField}) AS total ",
+				$psSql
+			)
+		);
+
+		$aResultCount = $this->query($sTotalFiltered, $paGet);
+		$this->iTotalFilteredRecords = $aResultCount[0]['total'];
 
 		$sPK = $this->getTablePK($psTable);
 
-		$aTotalCount = $this->query("SELECT COUNT({$sPK}) AS total FROM {$psTable};");
-		$this->totalRecords = $aTotalCount[0]['total'];
+		$sTotalRecords = "SELECT COUNT({$sPK}) AS total FROM {$psTable};";
+
+		if ((bool) $paGet['total_filtered'])
+			$sTotalRecords = preg_replace(
+				'/(GROUP BY.*)$/m',
+				'',
+				str_ireplace(
+					trim($psFields),
+					" COUNT({$sCountField}) AS total ",
+					$psQuery
+				)
+			);
+
+		$aTotalCount = $this->query($sTotalRecords, $paGet);
+		$this->iTotalRecords = $aTotalCount[0]['total'];
 
 		if (isset($paGet['iDisplayStart']) && $paGet['iDisplayLength']!='-1') {
 			$sLimit = " LIMIT {$paGet['iDisplayStart']}, {$paGet['iDisplayLength']}";
